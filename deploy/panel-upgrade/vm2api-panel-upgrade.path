@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch vm2api upgrade request from panel
+
+[Path]
+PathExists=/opt/vm2api/data/upgrade.request
+Unit=vm2api-panel-upgrade.service
+
+[Install]
+WantedBy=paths.target

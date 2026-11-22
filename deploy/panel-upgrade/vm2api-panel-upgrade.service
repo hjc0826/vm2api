@@ -1,0 +1,10 @@
+[Unit]
+Description=vm2api panel-triggered upgrade (runs fork upgrade.sh)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vm2api-panel-upgrade-hook
+TimeoutStartSec=1800
+Nice=10
