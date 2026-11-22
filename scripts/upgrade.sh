@@ -124,10 +124,10 @@ RUNNING_TAG="$(grep -E '^VM2API_IMAGE_TAG=' "$ENVF" | tail -1 | cut -d= -f2-)"
 ok "升级成功 → $RUNNING_TAG"
 
 # 备份：推到自己的 fork（rebase 改写过历史，必须 force-with-lease）
-if git remote get-url mine >/dev/null 2>&1; then
+if git -C "$SRC" remote get-url mine >/dev/null 2>&1; then
   say "同步到远程备份"
-  if git push -q --force-with-lease mine local 2>/dev/null; then
-    ok "已推送 $(git rev-parse --short HEAD) → mine/local"
+  if git -C "$SRC" push -q --force-with-lease mine local 2>/dev/null; then
+    ok "已推送 $(git -C "$SRC" rev-parse --short HEAD) → mine/local"
   else
     echo "  ⚠ push 失败（本地改动仍安全，可稍后手动 git push --force-with-lease mine local）"
   fi
