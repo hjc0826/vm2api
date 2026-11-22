@@ -406,6 +406,21 @@ export async function hostUpgradeDeployment({
 }
 
 export async function readHostUpgradeStatus(options = {}) {
+  // PATCH(ops): 自维护分支的升级由宿主机脚本执行，状态写在这个文件里。
+  try {
+    const f = path.join(projectRoot(options.projectRoot), 'data', 'upgrade.status.json')
+    if (fs.existsSync(f)) {
+      const s = JSON.parse(fs.readFileSync(f, 'utf8'))
+      if (s && s.state) {
+        return {
+          ...s,
+          log_command: s.log_command || 'tail -f /var/log/vm2api-panel-upgrade.log',
+        }
+      }
+    }
+  } catch {
+    // fall through to the docker helper path
+  }
   const deployment = options.deployment || (await hostUpgradeDeployment(options))
   if (!deployment) return null
   try {
@@ -487,18 +502,30 @@ export async function startHostUpgrade({
       data: { ...status, started: false, target, command },
     }
   }
-  // PATCH(ops): 禁止面板一键升级。它会用官方 compose 拉 ghcr 镜像，
-  // 覆盖本机的 local 镜像与 docker-compose.yml，导致自维护分支失效。
-  // 升级统一走宿主机脚本（rebase + 本地构建 + 冒烟 + 回滚）。
+  // PATCH(ops): 一键升级不再走官方 helper 容器（那会拉 ghcr 镜像覆盖本地构建）。
+  // 改为写一个请求文件到挂载目录，由宿主机 systemd path 单元执行
+  // /opt/vm2api-src/scripts/upgrade.sh（rebase + 本地构建 + 冒烟 + 回滚 + 推送备份）。
   if (env?.VM2API_ALLOW_PANEL_UPGRADE !== '1') {
+    const reqFile = path.join(projectRoot(root), 'data', 'upgrade.request')
+    try {
+      fs.mkdirSync(path.dirname(reqFile), { recursive: true })
+      const tmp = `${reqFile}.tmp`
+      fs.writeFileSync(tmp, JSON.stringify({ target, at: new Date().toISOString(), by: 'panel' }))
+      fs.renameSync(tmp, reqFile)
+    } catch (e) {
+      return {
+        status: 500,
+        error: {
+          message: `无法写入升级请求：${e?.message || e}`,
+          code: 'upgrade_request_failed',
+          command,
+        },
+        data: { ...status, started: false, target, command },
+      }
+    }
     return {
-      status: 409,
-      error: {
-        message: `本机为自维护分支，请在宿主机执行：${command}`,
-        code: 'host_upgrade_disabled',
-        command,
-      },
-      data: { ...status, started: false, target, command },
+      status: 202,
+      data: { ...status, started: true, target, command, via: 'host-script' },
     }
   }
   if (!status.update_available && !version) {
