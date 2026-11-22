@@ -43,8 +43,8 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
-if [ "$LATEST" = "$CURRENT_TAG" ]; then
-  ok "已是最新 $CURRENT_TAG，无需操作"
+if [ "$LATEST" = "$CURRENT_TAG" ] && [ "$MODE" != "--rebuild" ]; then
+  ok "已是最新 $CURRENT_TAG，无需操作（要强制重建用 --rebuild）"
   exit 0
 fi
 
