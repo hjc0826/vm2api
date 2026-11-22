@@ -196,9 +196,11 @@ export function changelogSince(entries, currentVersion) {
 }
 
 export function upgradeCommand(target) {
+  // PATCH(ops): 本机为自维护分支，升级必须走宿主机脚本（rebase + 本地构建），
+  // 不能再用官方 install.sh —— 那会把镜像换回 ghcr 并覆盖 docker-compose.yml。
   const tag = normalizeTag(target)
-  const flag = tag ? ` --version ${tag}` : ''
-  return `curl -sSL ${INSTALL_SCRIPT_URL} | sudo bash -s -- upgrade${flag}`
+  const flag = tag ? ` ${tag}` : ''
+  return `sudo /opt/vm2api-src/scripts/upgrade.sh${flag}`
 }
 
 export function defaultUpgradeCommand() {
@@ -308,7 +310,8 @@ export async function buildUpdateStatus({ projectRoot: root, currentVersion, upg
     changelog: newer,
     needs_wrap_cli_sync: needsWrap,
     upgrade_command: upgradeCommand(updateAvailable ? latest : ''),
-    check_command: `sudo bash ${hostRoot(root)}/deploy/install.sh check`,
+    // PATCH(ops): 同上，检查也走自维护脚本
+    check_command: 'sudo /opt/vm2api-src/scripts/upgrade.sh --check',
     repo: GITHUB_REPO,
     source_error: remote.error,
     ...(upgrade ? { upgrade } : {}),
@@ -481,6 +484,20 @@ export async function startHostUpgrade({
   if (!confirm) {
     return {
       status: 200,
+      data: { ...status, started: false, target, command },
+    }
+  }
+  // PATCH(ops): 禁止面板一键升级。它会用官方 compose 拉 ghcr 镜像，
+  // 覆盖本机的 local 镜像与 docker-compose.yml，导致自维护分支失效。
+  // 升级统一走宿主机脚本（rebase + 本地构建 + 冒烟 + 回滚）。
+  if (env?.VM2API_ALLOW_PANEL_UPGRADE !== '1') {
+    return {
+      status: 409,
+      error: {
+        message: `本机为自维护分支，请在宿主机执行：${command}`,
+        code: 'host_upgrade_disabled',
+        command,
+      },
       data: { ...status, started: false, target, command },
     }
   }
