@@ -67,6 +67,29 @@ FULL_IMAGE="${IMAGE_REPO}:${NEW_TAG}"
 echo "  你的改动: ${PATCH_COUNT} 个提交"
 echo "  目标镜像: ${FULL_IMAGE}"
 
+# ---------- 3b. 同步 compose 与 .env 模板 ----------
+# 官方升级会刷新 docker-compose.yml 并补全 .env 缺失键；自维护流程必须做同样的事，
+# 否则上游新增的卷/环境变量不会生效。
+say "同步 docker-compose.yml 与 .env 模板"
+if ! cmp -s "$SRC/docker-compose.yml" "$DEPLOY/docker-compose.yml"; then
+  cp -f "$DEPLOY/docker-compose.yml" "$DEPLOY/docker-compose.yml.bak-upgrade"
+  cp -f "$SRC/docker-compose.yml" "$DEPLOY/docker-compose.yml"
+  warn_notes="${warn_notes:-}compose"
+  echo "  已更新 docker-compose.yml（旧文件备份为 .bak-upgrade）"
+fi
+if [ -f "$SRC/.env.example" ]; then
+  added=0
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue ;; esac
+    key="${line%%=*}"
+    if ! grep -qE "^${key}=" "$ENVF"; then
+      printf '%s\n' "$line" >>"$ENVF"
+      added=$((added + 1))
+    fi
+  done <"$SRC/.env.example"
+  [ "$added" -gt 0 ] && echo "  .env 补入 $added 个新键（已有值不覆盖）"
+fi
+
 # ---------- 4. 构建 ----------
 say "构建镜像（几分钟，别中断）"
 VM2API_IMAGE="$IMAGE_REPO" VM2API_IMAGE_TAG="$NEW_TAG" \

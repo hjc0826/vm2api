@@ -18,6 +18,10 @@ echo "将恢复到:"
 grep -E '^VM2API_IMAGE(_TAG)?=' "$BACKUP" || true
 
 cp -f "$BACKUP" "$ENVF"
+if [ -f "$DEPLOY/docker-compose.yml.bak-upgrade" ]; then
+  cp -f "$DEPLOY/docker-compose.yml.bak-upgrade" "$DEPLOY/docker-compose.yml"
+  echo "已恢复升级前的 docker-compose.yml"
+fi
 cd "$DEPLOY"
 docker compose up -d
 
